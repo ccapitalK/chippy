@@ -1,9 +1,11 @@
+extern crate rand;
 use mem::Mem;
+use rand::Rng;
 
 #[derive(Debug)]
 pub struct Cpu {
     pc : u16,
-    sp : u8,
+    sp : usize,
     reg : [u8; 16],
     stack : [u16; 16],
     reg_i : u16,
@@ -36,15 +38,17 @@ impl Cpu {
         let b   = ((ins>>8)&0xf)  as u8;
         let c   = ((ins>>4)&0xf)  as u8;
         let d   = ((ins   )&0xf)  as u8;
-        let jj  = (ins>> 8)  as u8;
+        //let jj  = (ins>> 8)  as u8;
         let kk  = (ins&0xff) as u8;
         let nnn = ins&0xfff;
 
         match a {
-            //TODO: Implement screen clear, Return
             0x0 => match kk {
                 0xe0 => unimplemented!(), //TODO: Clear display
-                0xee => unimplemented!(), //TODO: return subroutine
+                0xee => {
+                    self.pc = try!(self.pop_stack());
+                    return Ok(());
+                },
                 _   => return Err(format!("Unknown Opcode encountered: 0x{:x}", ins)),
             },
             0x1 => {
@@ -53,7 +57,14 @@ impl Cpu {
                 self.pc=nnn;
                 return Ok(());
             },
-            0x2 => unimplemented!(), //TODO: CALL addr
+            0x2 => {
+                //2nnn - CALL addr
+                //Call subroutine at nnn.
+                let pc = self.pc;
+                try!(self.push_stack(pc+2u16));
+                self.pc=nnn;
+                return Ok(());
+            },
             0x3 => {
                 //SE Vx, byte
                 //Skip next instruction if Vx = kk.
@@ -162,7 +173,43 @@ impl Cpu {
                 self.pc=nnn+(self.reg[0] as u16);
                 return Ok(());
             },
-            _ => return Err(format!("Unknown Opcode encountered: 0x{:x}", ins)),
+            0xC => {
+                //Bnnn - JP V0, addr
+                //Jump to location nnn + V0.
+                self.reg[b as usize]=kk & (rand::thread_rng().gen_range(0,256) as u8);
+                return Ok(());
+            },
+            0xD => unimplemented!(), //TODO: Dxyn - DRW Vx, Vy, nibble
+            0xE => match kk {
+                0x9E => unimplemented!(), //TODO: Ex9E - SKP Vx
+                0xA1 => unimplemented!(), //TODO: ExA1 - SKNP Vx
+                _ => return Err(format!("Unknown Opcode encountered: 0x{:x}", ins)),
+            },
+            0xF => match kk {
+                0x07 => unimplemented!(), //TODO: Fx07 - LD Vx, DT
+                0x0A => unimplemented!(), //TODO: Fx0A - LD Vx, K
+                0x15 => unimplemented!(), //TODO: Fx15 - LD DT, Vx
+                0x18 => unimplemented!(), //TODO: Fx18 - LD ST, Vx
+                0x1E => {
+                    //Fx1E - ADD I, Vx
+                    //Set I = I + Vx.
+                    self.reg_i+=self.reg[b as usize] as u16;
+                }, 
+                0x29 => unimplemented!(), //Fx29 - LD F, Vx
+                0x33 => {
+                    //Fx33 - LD B, Vx
+                    //Store BCD representation of Vx in memory locations I, I+1, and I+2.
+                    let value = self.reg[b as usize];
+                    let addr = self.reg_i as usize;
+                    self.memory.write_u8(  addr, value/100);
+                    self.memory.write_u8(addr+1, (value/10)%10);
+                    self.memory.write_u8(addr+2, value%10);
+                }, 
+                0x55 => unimplemented!(), //Fx55 - LD [I], Vx TODO
+                0x65 => unimplemented!(), //Fx65 - LD Vx, [I] TODO
+                _ => return Err(format!("Unknown Opcode encountered: 0x{:x}", ins)),
+            },
+            _ => return Err(format!("Unknown Opcode encountered (probably a bug in the emulator, this code should REALLY be unreachable): 0x{:x}", ins)),
         };
 
         self.pc += 2;
@@ -170,6 +217,21 @@ impl Cpu {
     }
     fn get_next_instruction(&mut self) -> u16 {
         self.memory.read_u16(self.pc as usize)
+    }
+    fn push_stack(&mut self, val: u16) -> Result<(), String> {
+        if self.sp >= 16 {
+            return Err(format!("Progam stack overflowed! {:?}", self.stack));
+        }
+        self.stack[self.sp]=val;
+        self.sp+=1;
+        Ok(())
+    }
+    fn pop_stack(&mut self) -> Result<u16, String> {
+        if self.sp == 0 {
+            return Err(format!("Progam stack underflowed!"));
+        }
+        self.sp-=1;
+        Ok(self.stack[self.sp])
     }
 }
 
@@ -188,6 +250,27 @@ fn test_exec_instruction(){
         attempt(cpu.exec_instruction());
         if cpu.pc != 0x4ff {
             panic!("Test failed for ins 1nnn");
+        }
+    }
+    {   //test 2nnn - CALL addr
+        let mut cpu = Cpu::new();
+        cpu.memory.memset(0x200, &vec![0x24, 0xff]);
+        attempt(cpu.exec_instruction());
+        if cpu.pc != 0x4ff || cpu.stack[0] != 0x202 || cpu.sp != 1 {
+            panic!("Test failed for ins 2nnn");
+        }
+    }
+    {   //test 00EE - RET
+        let mut cpu = Cpu::new();
+        cpu.memory.memset(0x200, &vec![0x24, 0x00]);
+        cpu.memory.memset(0x400, &vec![0x00, 0xee]);
+        attempt(cpu.exec_instruction());
+        if cpu.pc != 0x400 || cpu.stack[0] != 0x202 || cpu.sp != 1 {
+            panic!("Ins 2nnn failed in test for ins 00ee?");
+        }
+        attempt(cpu.exec_instruction());
+        if cpu.pc != 0x202 || cpu.sp != 0 {
+            panic!("Test failed for ins 00ee");
         }
     }
     {   //test 6xkk - LD Vx, byte
@@ -402,4 +485,47 @@ fn test_exec_instruction(){
             panic!("Test failed for ins Bnnn");
         }
     }
+    {   //test Cxkk - RND Vx, byte
+        //no real way to test randomness, so just ensure 
+        //that instruction is decoded and bitmask works
+        const NUM_TRIALS : i32 = 100;
+        let mut cpu = Cpu::new();
+        for bitmask in 0..256 {
+            let bitmask = bitmask as u8;
+            cpu.memory.memset(0x200, 
+                &vec![0xC0, bitmask]);
+            for _ in 0..NUM_TRIALS {
+                cpu.pc=0x200;
+                attempt(cpu.exec_instruction());
+                if cpu.reg[0] & (!bitmask) != 0 { //ie the bitmask fails
+                    panic!("Test failed for ins Cxkk: bitmask didn't work");
+                }
+            }
+        }
+    }
+    {   //test Fx1E - ADD I, Vx
+        let mut cpu = Cpu::new();
+        cpu.memory.memset(0x200, 
+              &vec![0x60, 0x04, 0xA2, 0x23, 0xF0, 0x1E]);
+        attempt(cpu.exec_instruction());
+        attempt(cpu.exec_instruction());
+        attempt(cpu.exec_instruction());
+        if cpu.reg_i != 0x227 {
+            panic!("Test failed for ins Fx1E");
+        }
+    }
+    {   //Fx33 - LD B, Vx
+        let mut cpu = Cpu::new();
+        cpu.memory.memset(0x200, 
+              &vec![0x60, 123, 0xA4, 0x00, 0xF0, 0x33]);
+        attempt(cpu.exec_instruction());
+        attempt(cpu.exec_instruction());
+        attempt(cpu.exec_instruction());
+        if  cpu.memory.read_u8(0x400) != 1 ||
+            cpu.memory.read_u8(0x401) != 2 ||
+            cpu.memory.read_u8(0x402) != 3 {
+            panic!("Test failed for ins Fx33");
+        }
+    }
+    //TODO: Implement draw_sprite
 }
