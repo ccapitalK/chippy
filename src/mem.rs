@@ -24,6 +24,11 @@ impl Mem {
     pub fn write_u8(&mut self, addr: usize, val: u8) {
         self.mem[addr]=val;
     }
+    pub fn memset(&mut self, addr: usize, data: &Vec<u8>){
+        for (i, v) in data.iter().enumerate() {
+            self.mem[addr+i]=*v;
+        }
+    }
 }
 
 impl Default for Mem {
