@@ -2,8 +2,10 @@ use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::fmt;
 use std::path;
 
+const MEM_SIZE : usize = 0x1000;
+
 pub struct Mem {
-    mem : [u8; 0x1000]
+    mem : [u8; MEM_SIZE]
 }
 
 impl Mem {
@@ -34,7 +36,7 @@ impl Mem {
 impl Default for Mem {
     fn default() -> Mem {
         Mem {
-            mem : [0u8; 0x1000]
+            mem : [0u8; MEM_SIZE]
         }
     }
 }
