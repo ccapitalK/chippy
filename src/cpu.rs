@@ -24,7 +24,7 @@ impl Cpu {
         };
         ret_val
     }
-    pub fn exec_instruction(&mut self) -> Result<(), &'static str>{
+    pub fn exec_instruction(&mut self) -> Result<(), String>{
 
         let ins = self.get_next_instruction();
         //instructions are decoded as so
@@ -41,6 +41,8 @@ impl Cpu {
         let nnn = ins&0xfff;
 
         match a {
+            //TODO: Implement screen clear, Return
+            0x0 => unimplemented!(),
             0x1 => {
                 //1nnn - JP addr
                 //Jump to location nnn.
@@ -109,9 +111,9 @@ impl Cpu {
                     }
                     self.reg[b as usize] = sum as u8;
                 },
-                _   => return Err("Unknown Opcode encountered!"),
+                _   => return Err(format!("Unknown Opcode encountered: 0x{:x}", ins)),
             },
-            _ => return Err("Unknown Opcode encountered!"),
+            _ => return Err(format!("Unknown Opcode encountered: 0x{:x}", ins)),
         };
 
         self.pc += 2;
@@ -122,7 +124,7 @@ impl Cpu {
     }
 }
 
-fn attempt(obj: Result<(), &'static str>){
+fn attempt(obj: Result<(), String>){
     match obj {
         Err(v) => panic!(v),
         _   => (),
