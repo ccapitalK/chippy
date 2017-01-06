@@ -2,16 +2,34 @@ use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::fmt;
 use std::path;
 
-const MEM_SIZE : usize = 0x1000;
+const MEM_SIZE : usize =   0x1000;
+const SCREEN_WIDTH : usize =   64;
+const SCREEN_HEIGHT: usize =   32;
+const SPRITE_DATA_OFFSET: u16 = 0;
 
 pub struct Mem {
-    mem : [u8; MEM_SIZE]
+    mem : [u8; MEM_SIZE],
+    vmem: [[bool; 256]; 256]
 }
 
 impl Mem {
+    //Manipulate large amounts of memory directly
     pub fn load_rom(&mut self, file_name: &path::Path) -> Result<(), &str> {
-        Ok(())
+        unimplemented!()
+        //Ok(())
     }
+    pub fn memset(&mut self, addr: usize, data: &Vec<u8>){
+        for (i, v) in data.iter().enumerate() {
+            self.mem[addr+i]=*v;
+        }
+    }
+    pub fn reset(&mut self){
+        self.mem = [0u8; MEM_SIZE];
+        self.clear_screen();
+        self.set_sprite_data();
+    }
+
+    //Memory access functions
     pub fn read_u16(&mut self, addr: usize) -> u16 {
         let mut foo = &self.mem[addr..addr+2];
         foo.read_u16::<BigEndian>().unwrap()
@@ -26,18 +44,48 @@ impl Mem {
     pub fn write_u8(&mut self, addr: usize, val: u8) {
         self.mem[addr]=val;
     }
-    pub fn memset(&mut self, addr: usize, data: &Vec<u8>){
-        for (i, v) in data.iter().enumerate() {
-            self.mem[addr+i]=*v;
+
+    //vmem functions
+    pub fn clear_screen(&mut self){
+        for x in 0..256 {
+            for y in 0..256 {
+                self.vmem[x as usize][y as usize] = false;
+            }
         }
+    }
+    fn set_sprite_data(&mut self){
+        let sprite_data = 
+            vec![0xf0, 0x90, 0x90, 0x90, 0xf0,
+                 0x20, 0x60, 0x20, 0x20, 0x70,
+                 0xF0, 0x10, 0xF0, 0x80, 0xF0,
+                 0xF0, 0x10, 0xF0, 0x10, 0xF0,
+                 0x90, 0x90, 0xF0, 0x10, 0x10,
+                 0xF0, 0x80, 0xF0, 0x10, 0xF0,
+                 0xF0, 0x80, 0xF0, 0x90, 0xF0,
+                 0xF0, 0x10, 0x20, 0x40, 0x40,
+                 0xF0, 0x90, 0xF0, 0x90, 0xF0,
+                 0xF0, 0x90, 0xF0, 0x10, 0xF0,
+                 0xF0, 0x90, 0xF0, 0x90, 0x90,
+                 0xE0, 0x90, 0xE0, 0x90, 0xE0,
+                 0xF0, 0x80, 0x80, 0x80, 0xF0,
+                 0xE0, 0x90, 0x90, 0x90, 0xE0,
+                 0xF0, 0x80, 0xF0, 0x80, 0xF0,
+                 0xF0, 0x80, 0xF0, 0x80, 0x80];
+        self.memset(SPRITE_DATA_OFFSET as usize, &sprite_data);
+    }
+    pub fn get_sprite_addr(sprite_no: u8) -> u16 {
+        SPRITE_DATA_OFFSET + ((5*sprite_no) as u16)
     }
 }
 
 impl Default for Mem {
     fn default() -> Mem {
-        Mem {
-            mem : [0u8; MEM_SIZE]
-        }
+        let mut ret_val = Mem {
+            mem : [0u8; MEM_SIZE],
+            vmem: [[false; 256]; 256]
+        };
+        ret_val.set_sprite_data();
+        ret_val
     }
 }
 
