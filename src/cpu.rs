@@ -6,22 +6,23 @@ use rand::Rng;
 pub struct Cpu {
     pc : u16,
     sp : usize,
+    dt : u8,
+    st : u8,
     reg : [u8; 16],
     stack : [u16; 16],
     reg_i : u16,
-    //ins : u16,
-    memory : Mem
+    pub memory : Mem
 }
 
-impl Cpu {
-    pub fn new() -> Cpu {
+impl Cpu { pub fn new() -> Cpu {
         let ret_val = Cpu {
             pc : 0x200,
             sp : 0,
+            dt : 0,
+            st : 0,
             reg : [0u8; 16],
             stack : [0u16; 16],
             reg_i : 0,
-            //ins : 0,
             memory : Default::default()
         };
         ret_val
@@ -43,11 +44,11 @@ impl Cpu {
         let nnn = ins&0xfff;
 
         //err message for unknown opcode
-        let err_unknown_opcode = Err(format!("Unknown Opcode encountered: 0x{:x}", ins)); 
+        let err_unknown_opcode = Err(format!("Unknown instruction encountered: 0x{:04x}", ins)); 
 
         match a {
             0x0 => match kk {
-                0xe0 => { //TODO: Test this
+                0xe0 => {
                     //00E0 - CLS
                     //Clear the display.
                     self.memory.clear_screen()
@@ -188,17 +189,36 @@ impl Cpu {
                 self.reg[b as usize]=kk & (rand::thread_rng().gen_range(0,256) as u8);
                 return Ok(());
             },
-            0xD => unimplemented!(), //TODO: Dxyn - DRW Vx, Vy, nibble
+            0xD => {
+                //Dxyn - DRW Vx, Vy, nibble
+                //Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision.
+                let x = self.reg[b as usize];
+                let y = self.reg[c as usize];
+                self.reg[0xf]=self.memory
+                    .draw_sprite(self.reg_i, x, y, d) as u8;
+            }, 
             0xE => match kk {
                 0x9E => unimplemented!(), //TODO: Ex9E - SKP Vx
                 0xA1 => unimplemented!(), //TODO: ExA1 - SKNP Vx
                 _ => return err_unknown_opcode,
             },
             0xF => match kk {
-                0x07 => unimplemented!(), //TODO: Fx07 - LD Vx, DT
+                0x07 => {
+                    //Fx07 - LD Vx, DT
+                    //Set Vx = delay timer value.
+                    self.reg[b as usize]=self.dt;
+                }, 
                 0x0A => unimplemented!(), //TODO: Fx0A - LD Vx, K
-                0x15 => unimplemented!(), //TODO: Fx15 - LD DT, Vx
-                0x18 => unimplemented!(), //TODO: Fx18 - LD ST, Vx
+                0x15 => {
+                    //Fx15 - LD DT, Vx
+                    //Set delay timer = Vx.
+                    self.dt=self.reg[b as usize];
+                }, 
+                0x18 => {
+                    //Fx18 - LD ST, Vx
+                    //Set sound timer = Vx.
+                    self.st=self.reg[b as usize];
+                }, 
                 0x1E => {
                     //Fx1E - ADD I, Vx
                     //Set I = I + Vx.
@@ -219,13 +239,20 @@ impl Cpu {
                     self.memory.write_u8(addr+2, value%10);
                 }, 
                 0x55 => {
-                    //Fx55 - LD [I], Vx TODO
+                    //Fx55 - LD [I], Vx
                     //Store registers V0 through Vx in memory starting at location I.
                     let addr = self.reg_i as usize;
-                    let vec = &self.reg[0..(((b&0xf)+1) as usize)].to_vec();
+                    let vec = &self.reg[0..((b+1) as usize)].to_vec();
                     self.memory.memset(addr, vec);
                 }, 
-                0x65 => unimplemented!(), //Fx65 - LD Vx, [I] TODO
+                0x65 => {
+                    //Fx65 - LD Vx, [I] 
+                    //Read registers V0 through Vx from memory starting at location I.
+                    let addr = self.reg_i as usize;
+                    let b = b as usize;
+                    let mem_vec = self.memory.get_vec(addr, b+1);
+                    self.reg[0..b+1].clone_from_slice(mem_vec.as_slice());
+                }, 
                 _ => return err_unknown_opcode,
             },
             _ => unreachable!()
@@ -238,9 +265,10 @@ impl Cpu {
         self.memory.reset();
         self.pc = 0x200;
         self.sp = 0;
+        self.dt = 0;
+        self.st = 0;
         self.reg = [0u8; 16];
         self.stack = [0u16; 16];
-        //self.ins = 0;
         self.reg_i = 0;
     }
     fn get_next_instruction(&mut self) -> u16 {
@@ -260,6 +288,13 @@ impl Cpu {
         }
         self.sp-=1;
         Ok(self.stack[self.sp])
+    }
+    fn decr_dt(&mut self) {
+        self.dt = self.dt.saturating_sub(1u8);
+    }
+    fn decr_st(&mut self) -> bool {
+        self.st = self.st.saturating_sub(1u8);
+        self.st == 0u8
     }
 }
 
@@ -534,6 +569,79 @@ fn test_exec_instruction(){
             }
         }
     }
+    {   //test Dxyn - DRW Vx, Vy, nibble
+        cpu.reset();
+        cpu.memory.memset(0x200, 
+              &vec![0x60, 0x03, 0x61, 0x03, 0xA4, 0x00, 0xD0, 0x12, 0xD0, 0x12]);
+        cpu.memory.memset(0x400, 
+              &vec![0x80, 0x80]);
+        attempt(cpu.exec_instruction());
+        attempt(cpu.exec_instruction());
+        attempt(cpu.exec_instruction());
+        attempt(cpu.exec_instruction());
+        if cpu.reg[0xf] != 0 {
+            panic!("VF was set when it shouldn't have been");
+        }
+        if  cpu.memory.get_cell(3,3) != true ||
+            cpu.memory.get_cell(3,4) != true {
+            panic!("Did not draw properly: \n{:#?}", cpu.memory);
+        }
+
+        attempt(cpu.exec_instruction());
+        if cpu.reg[0xf] == 0 {
+            panic!("VF wasn't set when it should have been");
+        }
+        if  cpu.memory.get_cell(3,3) != false ||
+            cpu.memory.get_cell(3,4) != false {
+            panic!("Did not flip cells when drawing: \n{:#?}", cpu.memory);
+        }
+    }
+    {   //test 00E0 - CLS
+        cpu.reset();
+        cpu.memory.memset(0x200, 
+              &vec![0x60, 0x03, 0x61, 0x03, 0xA4, 0x00, 0xD0, 0x12, 0x00, 0xe0]);
+        cpu.memory.memset(0x400, 
+              &vec![0x80, 0x80]);
+        attempt(cpu.exec_instruction());
+        attempt(cpu.exec_instruction());
+        attempt(cpu.exec_instruction());
+        attempt(cpu.exec_instruction());
+        attempt(cpu.exec_instruction());
+        if  cpu.memory.get_cell(3,3) != false ||
+            cpu.memory.get_cell(3,4) != false {
+            panic!("Test failed for ins 00E0");
+        }
+    }
+    {   //test Fx07 - LD Vx, DT
+        cpu.reset();
+        cpu.memory.memset(0x200, 
+              &vec![0xF0, 0x07]);
+        cpu.dt=4;
+        attempt(cpu.exec_instruction());
+        if cpu.reg[0] != 0x04 {
+            panic!("Test failed for ins Fx07");
+        }
+    }
+    {   //test Fx15 - LD DT, Vx
+        cpu.reset();
+        cpu.memory.memset(0x200, 
+              &vec![0x60, 0x04, 0xF0, 0x15]);
+        attempt(cpu.exec_instruction());
+        attempt(cpu.exec_instruction());
+        if cpu.dt != 0x04 {
+            panic!("Test failed for ins Fx15");
+        }
+    }
+    {   //test Fx18 - LD ST, Vx
+        cpu.reset();
+        cpu.memory.memset(0x200, 
+              &vec![0x60, 0x04, 0xF0, 0x18]);
+        attempt(cpu.exec_instruction());
+        attempt(cpu.exec_instruction());
+        if cpu.st != 0x04 {
+            panic!("Test failed for ins Fx18");
+        }
+    }
     {   //test Fx1E - ADD I, Vx
         cpu.reset();
         cpu.memory.memset(0x200, 
@@ -545,7 +653,7 @@ fn test_exec_instruction(){
             panic!("Test failed for ins Fx1E");
         }
     }
-    {   //Fx29 - LD F, Vx
+    {   //test Fx29 - LD F, Vx
         cpu.reset();
         cpu.memory.memset(0x200, 
               &vec![0x63, 0x0f, 0xf3, 0x29]);
@@ -559,7 +667,7 @@ fn test_exec_instruction(){
             panic!("Test failed for ins Fx29");
         }
     }
-    {   //Fx33 - LD B, Vx
+    {   //test Fx33 - LD B, Vx
         cpu.reset();
         cpu.memory.memset(0x200, 
               &vec![0x60, 123, 0xA4, 0x00, 0xF0, 0x33]);
@@ -572,7 +680,7 @@ fn test_exec_instruction(){
             panic!("Test failed for ins Fx33");
         }
     }
-    {   //Fx55 - LD [I], Vx
+    {   //test Fx55 - LD [I], Vx
         cpu.reset();
         cpu.memory.memset(0x200, 
               &vec![0x60, 1, 0x61, 2, 0x62, 3, 0xA4, 0x00, 0xF2, 0x55]);
@@ -587,4 +695,19 @@ fn test_exec_instruction(){
             panic!("Test failed for ins Fx55");
         }
     }
+    {   //test Fx65 - LD Vx, [I]
+        cpu.reset();
+        cpu.memory.memset(0x200, 
+              &vec![0x63, 0x0f, 0xf3, 0x29, 0xF4, 0x65]);
+        attempt(cpu.exec_instruction());
+        attempt(cpu.exec_instruction());
+        attempt(cpu.exec_instruction());
+        if  cpu.reg[0] != 0xf0 ||
+            cpu.reg[1] != 0x80 ||
+            cpu.reg[2] != 0xf0 ||
+            cpu.reg[3] != 0x80 ||
+            cpu.reg[4] != 0x80 {
+            panic!("Test failed for ins Fx65");
+        }
+}
 }
