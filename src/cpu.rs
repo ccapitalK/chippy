@@ -11,9 +11,13 @@ pub struct Cpu {
     reg:   [u8; 16],
     stack: [u16; 16],
     reg_i: u16,
+    pub memory : Mem,
+
     keys:  [bool; 16],
-    pub memory : Mem
+    key_counters: [u16; 16],
 }
+
+const KEY_TRAIL_LENGTH: u16 = 150;
 
 impl Cpu { pub fn new() -> Cpu {
         let ret_val = Cpu {
@@ -24,8 +28,9 @@ impl Cpu { pub fn new() -> Cpu {
             reg:   [0u8; 16],
             stack: [0u16; 16],
             reg_i: 0,
+            memory : Default::default(),
             keys:  [false; 16],
-            memory : Default::default()
+            key_counters: [0u16; 16],
         };
         ret_val
     }
@@ -34,6 +39,10 @@ impl Cpu { pub fn new() -> Cpu {
         println!("[0x{:03x}]: {:04X}", self.pc, self.get_next_instruction());
     }
     pub fn exec_instruction(&mut self) -> Result<(), String>{
+
+        for i in self.key_counters.iter_mut() {
+            *i=i.saturating_sub(1u16);
+        }
 
         if self.pc >= 0x1000 {
             return Err(format!("PC at illegal address: {}", self.pc));
@@ -210,6 +219,7 @@ impl Cpu { pub fn new() -> Cpu {
                     //Ex9E - SKP Vx
                     //Skip next instruction if key with the value of Vx is pressed.
                     let key = self.reg[b as usize]&0xfu8;
+                    self.key_counters[key as usize]=KEY_TRAIL_LENGTH;
                     if self.keys[key as usize] {
                         self.pc+=2;
                     }
@@ -218,6 +228,7 @@ impl Cpu { pub fn new() -> Cpu {
                     //ExA1 - SKNP Vx
                     //Skip next instruction if key with the value of Vx is not pressed.
                     let key = self.reg[b as usize]&0xfu8;
+                    self.key_counters[key as usize]=KEY_TRAIL_LENGTH;
                     if !self.keys[key as usize] {
                         self.pc+=2;
                     }
@@ -338,8 +349,12 @@ impl Cpu { pub fn new() -> Cpu {
     pub fn keyup(&mut self, keycode: u8) {
         self.keys[keycode as usize]=false;
     }
-    pub fn get_key(&mut self, keycode: u8) -> bool {
+    pub fn get_key(&self, keycode: u8) -> bool {
         self.keys[keycode as usize]
+    }
+    pub fn get_key_trail(&self, keycode: u8) -> u8 {
+        let prod: u32 = (self.key_counters[keycode as usize] as u32)*256;
+        (prod/(KEY_TRAIL_LENGTH as u32)) as u8
     }
 }
 
