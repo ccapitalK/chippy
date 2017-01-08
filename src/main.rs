@@ -3,14 +3,14 @@ extern crate rand;
 extern crate sdl2;
 mod cpu;
 use cpu::Cpu;
-use sdl2::messagebox;
+mod mem;
+
 use sdl2::pixels;
 use sdl2::keyboard::Keycode;
 use sdl2::event::Event;
-mod mem;
 
 //use std::fmt;
-use std::path;
+//use std::path;
 
 const VIEW_WIDTH:  u32 = 640;
 const VIEW_HEIGHT: u32 = 320;
@@ -55,15 +55,58 @@ fn draw_screen(renderer: &mut sdl2::render::Renderer, cpu: &Cpu){
     renderer.present();
 }
 
+enum KeyState {
+    KeyDown,
+    KeyUp,
+}
+
+#[inline(always)]
+fn parse_input(cpu: &mut Cpu, keycode: Keycode, state: KeyState){
+    let key_index = match keycode {
+        Keycode::Num4 => Some(0x0u8),
+        Keycode::Num5 => Some(0x1u8),
+        Keycode::Num6 => Some(0x2u8),
+        Keycode::Num7 => Some(0x3u8),
+
+        Keycode::R    => Some(0x4u8),
+        Keycode::T    => Some(0x5u8),
+        Keycode::Y    => Some(0x6u8),
+        Keycode::U    => Some(0x7u8),
+
+        Keycode::F    => Some(0x8u8),
+        Keycode::G    => Some(0x9u8),
+        Keycode::H    => Some(0xau8),
+        Keycode::J    => Some(0xbu8),
+
+        Keycode::V    => Some(0xcu8),
+        Keycode::B    => Some(0xdu8),
+        Keycode::N    => Some(0xeu8),
+        Keycode::M    => Some(0xfu8),
+        _ => None,
+    };
+    if let Some(key_index) = key_index {
+        match state {
+            KeyState::KeyDown => cpu.keydown(key_index),
+            KeyState::KeyUp   => cpu.keyup(key_index),
+        };
+    }
+}
+
+fn load_rom(cpu: &mut Cpu){
+    for argument in std::env::args().skip(1) {
+        println!("Reading rom \"{}\" ...", argument);
+        if let Err(s) = cpu.memory.load_rom(&argument) {
+            panic!("Error reading {}: {}", &argument, s);
+        }
+    }
+}
+
 fn main_loop(sdl_context: &sdl2::Sdl, renderer: &mut sdl2::render::Renderer, cpu: &mut Cpu) {
     let mut events_source = sdl_context.event_pump().unwrap();
-    let instructions_per_second = 100u64;
+    let instructions_per_second = 400u64;
     let mut total_instructions_executed = 0u64;
-    cpu.memory.draw_sprite(0u16, 5u8, 5u8, 5u8);
-    cpu.memory.draw_sprite(0u16, 0u8, 20u8, 5u8);
 
-    //write infinite loop to program memory
-    cpu.memory.memset(0x200, &vec![0x12, 0x00]);
+    load_rom(cpu);
 
     // start timer subsystem
     let mut timer_subsys  = sdl_context.timer().unwrap();
@@ -79,9 +122,13 @@ fn main_loop(sdl_context: &sdl2::Sdl, renderer: &mut sdl2::render::Renderer, cpu
                     Event::Quit {..} => break 'main,
                     Event::KeyDown {keycode: Some(keycode), ..} => match keycode {
                         Keycode::Escape    => break 'main,
-                        Keycode::Backspace => cpu.reset(),
-                        _ => (),
+                        Keycode::Backspace => {
+                            cpu.reset();
+                            load_rom(cpu);
+                        },
+                        keycode => parse_input(cpu, keycode, KeyState::KeyDown),
                     },
+                    Event::KeyUp {keycode: Some(keycode), ..} => parse_input(cpu, keycode, KeyState::KeyUp),
                     _ => (),
                 };
             }

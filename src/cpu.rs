@@ -29,8 +29,15 @@ impl Cpu { pub fn new() -> Cpu {
         };
         ret_val
     }
+    #[allow(dead_code)]
+    pub fn print_instruction(&self){
+        println!("[0x{:03x}]: {:04X}", self.pc, self.get_next_instruction());
+    }
     pub fn exec_instruction(&mut self) -> Result<(), String>{
 
+        if self.pc >= 0x1000 {
+            return Err(format!("PC at illegal address: {}", self.pc));
+        }
         let ins = self.get_next_instruction();
         //instructions are decoded as so
         // abcd
@@ -106,7 +113,7 @@ impl Cpu { pub fn new() -> Cpu {
             0x7 => { 
                 //7xkk - ADD Vx, byte
                 //Set Vx = Vx + kk.
-                self.reg[b as usize]+= kk;
+                self.reg[b as usize] = self.reg[b as usize].wrapping_add(kk);
             },
             0x8 => match d { 
                 0x0 => {
@@ -186,10 +193,9 @@ impl Cpu { pub fn new() -> Cpu {
                 return Ok(());
             },
             0xC => {
-                //Bnnn - JP V0, addr
-                //Jump to location nnn + V0.
+                //Cxkk - RND Vx, byte
+                //Set Vx = random byte AND kk.
                 self.reg[b as usize]=kk & (rand::thread_rng().gen_range(0,256) as u8);
-                return Ok(());
             },
             0xD => {
                 //Dxyn - DRW Vx, Vy, nibble
@@ -301,7 +307,7 @@ impl Cpu { pub fn new() -> Cpu {
         //don't modify keys
         self.reg_i = 0;
     }
-    fn get_next_instruction(&mut self) -> u16 {
+    fn get_next_instruction(&self) -> u16 {
         self.memory.read_u16(self.pc as usize)
     }
     fn push_stack(&mut self, val: u16) -> Result<(), String> {
@@ -337,6 +343,7 @@ impl Cpu { pub fn new() -> Cpu {
     }
 }
 
+#[allow(dead_code)]
 fn attempt<T>(obj: Result<T, String>) -> T {
     match obj {
         Err(e) => panic!(e),
@@ -801,5 +808,5 @@ fn test_exec_instruction(){
             cpu.reg[4] != 0x80 {
             panic!("Test failed for ins Fx65");
         }
-}
+    }
 }

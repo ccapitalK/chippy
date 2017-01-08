@@ -1,6 +1,9 @@
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::fmt;
-use std::path;
+use std::path::Path;
+use std::fs::File;
+use std::io;
+use std::io::Read;
 
 pub const MEM_SIZE : usize =   0x1000;
 pub const SCREEN_WIDTH : usize =   64;
@@ -14,9 +17,20 @@ pub struct Mem {
 
 impl Mem {
     //Manipulate large amounts of memory directly
-    pub fn load_rom(&mut self, file_name: &path::Path) -> Result<(), &str> {
-        unimplemented!()
-        //Ok(())
+    pub fn load_rom(&mut self, file_name: &String) -> Result<(), io::Error> {
+
+        let file_name= Path::new(file_name);
+        let mut f = try!(File::open(file_name));
+        let mut file_vec: Vec<u8> = Vec::new();
+        let bytes_read = try!(f.read_to_end(&mut file_vec));
+        println!("{} bytes read", bytes_read);
+        if bytes_read > (MEM_SIZE - 0x200) {
+            let e = io::Error::new(io::ErrorKind::Other, "Rom file too large");
+            return Err(e);
+        }
+        self.memset(0x200, &file_vec);
+        Ok(())
+        
     }
     pub fn memset(&mut self, addr: usize, data: &Vec<u8>){
         for (i, v) in data.iter().enumerate() {
@@ -33,13 +47,15 @@ impl Mem {
     }
 
     //Memory access functions
-    pub fn read_u16(&mut self, addr: usize) -> u16 {
+    pub fn read_u16(&self, addr: usize) -> u16 {
         let mut foo = &self.mem[addr..addr+2];
         foo.read_u16::<BigEndian>().unwrap()
     }
+    #[allow(dead_code)]
     pub fn read_u8(&mut self, addr: usize) -> u8 {
         self.mem[addr]
     }
+    #[allow(dead_code)]
     pub fn write_u16(&mut self, addr: usize, val: u16) {
         let mut foo = &mut self.mem[addr..addr+2];
         foo.write_u16::<BigEndian>(val).unwrap()
