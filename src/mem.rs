@@ -23,7 +23,7 @@ impl Mem {
             self.mem[addr+i]=*v;
         }
     }
-    pub fn get_vec(&mut self, addr : usize, n: usize) -> Vec<u8> {
+    pub fn get_vec(&self, addr : usize, n: usize) -> Vec<u8> {
         self.mem[addr..addr+n].to_vec()
     }
     pub fn reset(&mut self){
@@ -56,7 +56,7 @@ impl Mem {
             }
         }
     }
-    pub fn get_cell(&mut self, x: u8, y: u8) -> bool {
+    pub fn get_cell(&self, x: u8, y: u8) -> bool {
         self.vmem[x as usize][y as usize]
     }
     pub fn draw_sprite(&mut self, addr: u16, x: u8, y: u8, n: u8) -> bool {

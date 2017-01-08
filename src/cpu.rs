@@ -4,25 +4,27 @@ use rand::Rng;
 
 #[derive(Debug)]
 pub struct Cpu {
-    pc : u16,
-    sp : usize,
-    dt : u8,
-    st : u8,
-    reg : [u8; 16],
-    stack : [u16; 16],
-    reg_i : u16,
+    pc:    u16,
+    sp:    usize,
+    dt:    u8,
+    st:    u8,
+    reg:   [u8; 16],
+    stack: [u16; 16],
+    reg_i: u16,
+    keys:  [bool; 16],
     pub memory : Mem
 }
 
 impl Cpu { pub fn new() -> Cpu {
         let ret_val = Cpu {
-            pc : 0x200,
-            sp : 0,
-            dt : 0,
-            st : 0,
-            reg : [0u8; 16],
-            stack : [0u16; 16],
-            reg_i : 0,
+            pc:    0x200,
+            sp:    0,
+            dt:    0,
+            st:    0,
+            reg:   [0u8; 16],
+            stack: [0u16; 16],
+            reg_i: 0,
+            keys:  [false; 16],
             memory : Default::default()
         };
         ret_val
@@ -44,7 +46,7 @@ impl Cpu { pub fn new() -> Cpu {
         let nnn = ins&0xfff;
 
         //err message for unknown opcode
-        let err_unknown_opcode = Err(format!("Unknown instruction encountered: 0x{:04x}", ins)); 
+        let err_unknown_opcode = Err(format!("Unknown instruction encountered at address[0x{:03x}]: 0x{:04x}", self.pc, ins)); 
 
         match a {
             0x0 => match kk {
@@ -198,8 +200,22 @@ impl Cpu { pub fn new() -> Cpu {
                     .draw_sprite(self.reg_i, x, y, d) as u8;
             }, 
             0xE => match kk {
-                0x9E => unimplemented!(), //TODO: Ex9E - SKP Vx
-                0xA1 => unimplemented!(), //TODO: ExA1 - SKNP Vx
+                0x9E => {
+                    //Ex9E - SKP Vx
+                    //Skip next instruction if key with the value of Vx is pressed.
+                    let key = self.reg[b as usize]&0xfu8;
+                    if self.keys[key as usize] {
+                        self.pc+=2;
+                    }
+                },
+                0xA1 => {
+                    //ExA1 - SKNP Vx
+                    //Skip next instruction if key with the value of Vx is not pressed.
+                    let key = self.reg[b as usize]&0xfu8;
+                    if !self.keys[key as usize] {
+                        self.pc+=2;
+                    }
+                },
                 _ => return err_unknown_opcode,
             },
             0xF => match kk {
@@ -208,7 +224,20 @@ impl Cpu { pub fn new() -> Cpu {
                     //Set Vx = delay timer value.
                     self.reg[b as usize]=self.dt;
                 }, 
-                0x0A => unimplemented!(), //TODO: Fx0A - LD Vx, K
+                0x0A => {
+                    //Fx0A - LD Vx, K
+                    //Wait for a key press, store the value of the key in Vx.
+                    self.reg[b as usize]=0xff;
+                    for i in 0..16 {
+                        if self.keys[i] {
+                            self.reg[b as usize] = i as u8;
+                            break;
+                        }
+                    }
+                    if self.reg[b as usize] == 0xff {
+                        return Ok(());
+                    }
+                },
                 0x15 => {
                     //Fx15 - LD DT, Vx
                     //Set delay timer = Vx.
@@ -269,6 +298,7 @@ impl Cpu { pub fn new() -> Cpu {
         self.st = 0;
         self.reg = [0u8; 16];
         self.stack = [0u16; 16];
+        //don't modify keys
         self.reg_i = 0;
     }
     fn get_next_instruction(&mut self) -> u16 {
@@ -289,12 +319,21 @@ impl Cpu { pub fn new() -> Cpu {
         self.sp-=1;
         Ok(self.stack[self.sp])
     }
-    fn decr_dt(&mut self) {
+    pub fn decr_dt(&mut self) {
         self.dt = self.dt.saturating_sub(1u8);
     }
-    fn decr_st(&mut self) -> bool {
+    pub fn decr_st(&mut self) -> bool {
         self.st = self.st.saturating_sub(1u8);
         self.st == 0u8
+    }
+    pub fn keydown(&mut self, keycode: u8) {
+        self.keys[keycode as usize]=true;
+    }
+    pub fn keyup(&mut self, keycode: u8) {
+        self.keys[keycode as usize]=false;
+    }
+    pub fn get_key(&mut self, keycode: u8) -> bool {
+        self.keys[keycode as usize]
     }
 }
 
@@ -612,6 +651,38 @@ fn test_exec_instruction(){
             panic!("Test failed for ins 00E0");
         }
     }
+    {   //test Ex9E - SKP Vx
+        cpu.reset();
+        cpu.memory.memset(0x200, 
+              &vec![0x61, 0x01, 0xE1, 0x9E, 0xE1, 0x9E]);
+        attempt(cpu.exec_instruction());
+        cpu.keys[1]=false;
+        attempt(cpu.exec_instruction());
+        if cpu.pc != 0x204 {
+            panic!("Test failed for ins Ex9E on branch not taken path");
+        }
+        cpu.keys[1]=true;
+        attempt(cpu.exec_instruction());
+        if cpu.pc != 0x208 {
+            panic!("Test failed for ins Ex9E on branch taken path");
+        }
+    }
+    {   //test ExA1 - SKNP Vx
+        cpu.reset();
+        cpu.memory.memset(0x200, 
+              &vec![0x61, 0x01, 0xE1, 0xA1, 0xE1, 0xA1]);
+        attempt(cpu.exec_instruction());
+        cpu.keys[1]=true;
+        attempt(cpu.exec_instruction());
+        if cpu.pc != 0x204 {
+            panic!("Test failed for ins ExA1 on branch not taken path");
+        }
+        cpu.keys[1]=false;
+        attempt(cpu.exec_instruction());
+        if cpu.pc != 0x208 {
+            panic!("Test failed for ins ExA1 on branch taken path");
+        }
+    }
     {   //test Fx07 - LD Vx, DT
         cpu.reset();
         cpu.memory.memset(0x200, 
@@ -620,6 +691,27 @@ fn test_exec_instruction(){
         attempt(cpu.exec_instruction());
         if cpu.reg[0] != 0x04 {
             panic!("Test failed for ins Fx07");
+        }
+    }
+    {   //test Fx0A - LD Vx, K
+        cpu.reset();
+        cpu.memory.memset(0x200, 
+              &vec![0xF0, 0x0A]);
+        attempt(cpu.exec_instruction());
+        if cpu.pc != 0x200 {
+            panic!("Test failed for ins Fx07: pc should not have incremented");
+        }
+        attempt(cpu.exec_instruction());
+        if cpu.pc != 0x200 {
+            panic!("Test failed for ins Fx07: pc should not have incremented");
+        }
+        cpu.keydown(0x04);
+        attempt(cpu.exec_instruction());
+        if cpu.reg[0] != 0x04 {
+            panic!("Test failed for ins Fx07: did not store pressed key");
+        }
+        if cpu.pc == 0x200 {
+            panic!("Test failed for ins Fx07: pc should have incremented");
         }
     }
     {   //test Fx15 - LD DT, Vx
