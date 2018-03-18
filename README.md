@@ -1,10 +1,10 @@
 # chippy
 A Chip8 emulator I wrote while learning rust
 
-##Usage
+## Usage
     chippy [rom file]
 
-##controls
+## controls
     Key 0 - 4
     Key 1 - 5
     Key 2 - 6
@@ -22,5 +22,5 @@ A Chip8 emulator I wrote while learning rust
     Key E - N
     Key F - M
 
-##Sound
+## Sound
 Sound is currently not implemented
