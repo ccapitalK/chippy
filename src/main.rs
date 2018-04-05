@@ -20,19 +20,22 @@ use argparse::{ArgumentParser, StoreTrue, Store};
 fn main_loop(mut contexts: Contexts, cpu: &mut Cpu, file_name: &str) {
     let audio_context = contexts.sdl.audio().unwrap();
     let mut events_source = contexts.sdl.event_pump().unwrap();
-    let mut total_instructions_executed = 0u64;
+    let num_frames = 0i64;
+    let frames_per_second = 60i64;
 
     io::load_rom(cpu, file_name);
 
     // start timer subsystem
     let mut timer_subsys  = contexts.sdl.timer().unwrap();
     'main: loop {
-        let instructions_per_second = cpu.get_ips();
+        let instructions_per_second = cpu.get_ips() as i64;
         //timing stuff
         //Note: This will probably break pretty badly if the program starts lagging heavily
-        let start_frame_time = timer_subsys.ticks() as u64;
-        let end_frame_time   = start_frame_time+16;
-        let instructions_by_frame_end = (end_frame_time*instructions_per_second)/1000;
+        let start_frame_time = timer_subsys.ticks() as i64;
+        let frame_expected_time = 
+            ((num_frames+1)*1000)/frames_per_second-(num_frames*1000)/frames_per_second;
+        let end_frame_time = frame_expected_time + start_frame_time;
+        let instructions_by_frame_end = (frame_expected_time*instructions_per_second)/1000;
 
         {
             for event in events_source.poll_iter() {
@@ -61,7 +64,7 @@ fn main_loop(mut contexts: Contexts, cpu: &mut Cpu, file_name: &str) {
                     _ => (),
                 };
             }
-            for _ in total_instructions_executed..instructions_by_frame_end {
+            for _ in 0..instructions_by_frame_end {
                 match cpu.exec_instruction() {
                     Err(v) => println!("Error in cpu.exec_instruction(): {}", v),
                     Ok(()) => (),
@@ -72,10 +75,9 @@ fn main_loop(mut contexts: Contexts, cpu: &mut Cpu, file_name: &str) {
         }
 
         //timing stuff
-        total_instructions_executed = instructions_by_frame_end;
-        let frame_time_elapsed = (timer_subsys.ticks() as u64)-start_frame_time;
+        let current_time = timer_subsys.ticks();
         //println!("{}", frame_time_elapsed);
-        timer_subsys.delay(16u32.saturating_sub(frame_time_elapsed as u32));
+        timer_subsys.delay((end_frame_time as u32) - current_time);
         cpu.decr_dt();
         cpu.decr_st();
     }
