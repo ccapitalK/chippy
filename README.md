@@ -22,8 +22,8 @@ A Chip8 emulator I wrote while learning rust
     Key E - N
     Key F - M
 
-    Increase Emulation Speed - Keypad +
-    Decrease Emulation Speed - Keypad -
+    Increase Emulation Speed - Q
+    Decrease Emulation Speed - A
 
 ## Sound
 Sound is currently not implemented

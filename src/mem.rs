@@ -17,7 +17,7 @@ pub struct Mem {
 
 impl Mem {
     //Manipulate large amounts of memory directly
-    pub fn load_rom(&mut self, file_name: &String) -> Result<(), io::Error> {
+    pub fn load_rom(&mut self, file_name: &str) -> Result<(), io::Error> {
 
         let file_name= Path::new(file_name);
         let mut f = try!(File::open(file_name));

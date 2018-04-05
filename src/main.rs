@@ -1,3 +1,4 @@
+extern crate argparse;
 extern crate byteorder;
 extern crate rand;
 extern crate sdl2;
@@ -11,15 +12,17 @@ use sdl2::keyboard::Keycode;
 use sdl2::event::Event;
 use sdl::Contexts;
 
+use argparse::{ArgumentParser, StoreTrue, Store};
+
 //use std::fmt;
 //use std::path;
 
-fn main_loop(mut contexts: Contexts, cpu: &mut Cpu) {
+fn main_loop(mut contexts: Contexts, cpu: &mut Cpu, file_name: &str) {
+    let audio_context = contexts.sdl.audio().unwrap();
     let mut events_source = contexts.sdl.event_pump().unwrap();
     let mut total_instructions_executed = 0u64;
-        
 
-    io::load_rom(cpu);
+    io::load_rom(cpu, file_name);
 
     // start timer subsystem
     let mut timer_subsys  = contexts.sdl.timer().unwrap();
@@ -39,16 +42,17 @@ fn main_loop(mut contexts: Contexts, cpu: &mut Cpu) {
                         // Exit emulator
                         Keycode::Escape    => break 'main,
                         // Increase emulator speed
-                        Keycode::KpPlus      => {
+                        Keycode::Q           => {
                             cpu.increase_ips();
                         }
                         // Decrease emulator speed
-                        Keycode::KpMinus     => {
+                        Keycode::A           => {
                             cpu.decrease_ips();
                         }
+                        // Reset emulator
                         Keycode::Backspace => {
                             cpu.reset();
-                            io::load_rom(cpu);
+                            io::load_rom(cpu, file_name);
                         }
                         // Pass input into Chip8 io routine
                         keycode => io::parse_input(cpu, keycode, io::KeyState::KeyDown),
@@ -78,11 +82,21 @@ fn main_loop(mut contexts: Contexts, cpu: &mut Cpu) {
 }
 
 fn main() {
-    if std::env::args().count() != 2 {
-        println!("Usage: chippy [rom file]");
-        std::process::exit(1);
+    let mut instructions_per_second = cpu::DEFAULT_INS_PER_SECOND;
+    let mut file_name = String::new();
+
+    {
+        let mut ap = ArgumentParser::new();
+        ap.set_description("Chip8 emulator");
+        ap.refer(&mut instructions_per_second)
+            .add_option(&["-f", "--freq"], Store, "Instructions per second");
+        ap.refer(&mut file_name)
+            .add_argument("<Rom File>", Store, "Name of rom file")
+            .required();
+        ap.parse_args_or_exit();
     }
     let mut cpu = Cpu::new();
+    cpu.set_ips(instructions_per_second);
 
-    sdl::with_contexts(move |contexts| main_loop(contexts, &mut cpu));
+    sdl::with_contexts(move |contexts| main_loop(contexts, &mut cpu, &file_name));
 }

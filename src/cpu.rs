@@ -4,7 +4,7 @@ use rand::Rng;
 
 const MIN_INS_PER_SECOND: u64 = 60u64;
 const MAX_INS_PER_SECOND: u64 = 4000u64;
-const DEFAULT_INS_PER_SECOND: u64 = 400u64;
+pub const DEFAULT_INS_PER_SECOND: u64 = 400u64;
 
 pub struct Cpu {
     pc:    u16,
@@ -374,6 +374,17 @@ impl Cpu {
     }
     pub fn get_ips(&self) -> u64 {
         self.instructions_per_second
+    }
+    pub fn set_ips(&mut self, new_ips: u64) {
+        let clamp = |min_v, max_v, v| {
+            use std::cmp::{max, min};
+            min(max_v,max(min_v,v))
+        };
+        self.instructions_per_second = 
+            clamp(MIN_INS_PER_SECOND, MAX_INS_PER_SECOND, new_ips);
+    }
+    pub fn get_st_active(&self) -> bool {
+        self.st != 0
     }
 }
 

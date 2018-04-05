@@ -151,11 +151,9 @@ pub fn parse_input(cpu: &mut Cpu, keycode: Keycode, state: KeyState) {
     }
 }
 
-pub fn load_rom(cpu: &mut Cpu){
-    for argument in ::std::env::args().skip(1) {
-        println!("Reading rom \"{}\" ...", argument);
-        if let Err(s) = cpu.memory.load_rom(&argument) {
-            panic!("Error reading {}: {}", &argument, s);
-        }
+pub fn load_rom(cpu: &mut Cpu, file_name: &str){
+    println!("Reading rom \"{}\" ...", file_name);
+    if let Err(s) = cpu.memory.load_rom(file_name) {
+        panic!("Error reading {}: {}", file_name, s);
     }
 }
