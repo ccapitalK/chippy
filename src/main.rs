@@ -5,24 +5,28 @@ mod cpu;
 use cpu::Cpu;
 mod mem;
 mod io;
+mod sdl;
 
 use sdl2::keyboard::Keycode;
 use sdl2::event::Event;
+use sdl::Contexts;
 
 //use std::fmt;
 //use std::path;
 
-fn main_loop(sdl_context: &sdl2::Sdl, renderer: &mut sdl2::render::Renderer, cpu: &mut Cpu) {
-    let mut events_source = sdl_context.event_pump().unwrap();
-    let instructions_per_second = 400u64;
+fn main_loop(mut contexts: Contexts, cpu: &mut Cpu) {
+    let mut events_source = contexts.sdl.event_pump().unwrap();
     let mut total_instructions_executed = 0u64;
+        
 
     io::load_rom(cpu);
 
     // start timer subsystem
-    let mut timer_subsys  = sdl_context.timer().unwrap();
+    let mut timer_subsys  = contexts.sdl.timer().unwrap();
     'main: loop {
+        let instructions_per_second = cpu.get_ips();
         //timing stuff
+        //Note: This will probably break pretty badly if the program starts lagging heavily
         let start_frame_time = timer_subsys.ticks() as u64;
         let end_frame_time   = start_frame_time+16;
         let instructions_by_frame_end = (end_frame_time*instructions_per_second)/1000;
@@ -32,13 +36,23 @@ fn main_loop(sdl_context: &sdl2::Sdl, renderer: &mut sdl2::render::Renderer, cpu
                 match event {
                     Event::Quit {..} => break 'main,
                     Event::KeyDown {keycode: Some(keycode), ..} => match keycode {
+                        // Exit emulator
                         Keycode::Escape    => break 'main,
+                        // Increase emulator speed
+                        Keycode::KpPlus      => {
+                            cpu.increase_ips();
+                        }
+                        // Decrease emulator speed
+                        Keycode::KpMinus     => {
+                            cpu.decrease_ips();
+                        }
                         Keycode::Backspace => {
                             cpu.reset();
                             io::load_rom(cpu);
-                        },
+                        }
+                        // Pass input into Chip8 io routine
                         keycode => io::parse_input(cpu, keycode, io::KeyState::KeyDown),
-                    },
+                    }
                     Event::KeyUp {keycode: Some(keycode), ..} => io::parse_input(cpu, keycode, io::KeyState::KeyUp),
                     _ => (),
                 };
@@ -49,7 +63,7 @@ fn main_loop(sdl_context: &sdl2::Sdl, renderer: &mut sdl2::render::Renderer, cpu
                     Ok(()) => (),
                 }
             }
-            io::draw_screen(renderer, &cpu);
+            io::draw_screen(&mut contexts, &cpu);
 
         }
 
@@ -68,20 +82,7 @@ fn main() {
         println!("Usage: chippy [rom file]");
         std::process::exit(1);
     }
-    let sdl_context = sdl2::init().unwrap();
-    let video_sybsys = sdl_context.video().unwrap();
-    let window = video_sybsys.window("Chippy", io::WINDOW_WIDTH, io::WINDOW_HEIGHT)
-        .position_centered()
-        .opengl()
-        .build()
-        .unwrap();
-    let mut renderer = window.renderer().build().unwrap();
     let mut cpu = Cpu::new();
 
-    //TODO: Remove this after figuring out what is causing first rect to not render
-    let square_rect = sdl2::rect::Rect::new(10, 10, 10, 10);
-    renderer.fill_rect(square_rect);
-    renderer.present();
-
-    main_loop(&sdl_context, &mut renderer, &mut cpu);
+    sdl::with_contexts(move |contexts| main_loop(contexts, &mut cpu));
 }

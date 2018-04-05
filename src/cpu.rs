@@ -2,7 +2,10 @@ extern crate rand;
 use mem::Mem;
 use rand::Rng;
 
-#[derive(Debug)]
+const MIN_INS_PER_SECOND: u64 = 60u64;
+const MAX_INS_PER_SECOND: u64 = 4000u64;
+const DEFAULT_INS_PER_SECOND: u64 = 400u64;
+
 pub struct Cpu {
     pc:    u16,
     sp:    usize,
@@ -15,11 +18,13 @@ pub struct Cpu {
 
     keys:  [bool; 16],
     key_counters: [u16; 16],
+    instructions_per_second: u64,
 }
 
 const KEY_TRAIL_LENGTH: u16 = 150;
 
-impl Cpu { pub fn new() -> Cpu {
+impl Cpu { 
+    pub fn new() -> Cpu {
         let ret_val = Cpu {
             pc:    0x200,
             sp:    0,
@@ -31,6 +36,7 @@ impl Cpu { pub fn new() -> Cpu {
             memory : Default::default(),
             keys:  [false; 16],
             key_counters: [0u16; 16],
+            instructions_per_second: DEFAULT_INS_PER_SECOND,
         };
         ret_val
     }
@@ -355,6 +361,19 @@ impl Cpu { pub fn new() -> Cpu {
     pub fn get_key_trail(&self, keycode: u8) -> u8 {
         let prod: u32 = (self.key_counters[keycode as usize] as u32)*256;
         (prod/(KEY_TRAIL_LENGTH as u32)) as u8
+    }
+    pub fn increase_ips(&mut self) {
+        use std::cmp::min;
+        self.instructions_per_second 
+            = min(self.instructions_per_second+10, MAX_INS_PER_SECOND);
+    }
+    pub fn decrease_ips(&mut self) {
+        use std::cmp::max;
+        self.instructions_per_second 
+            = max(self.instructions_per_second-10, MIN_INS_PER_SECOND);
+    }
+    pub fn get_ips(&self) -> u64 {
+        self.instructions_per_second
     }
 }
 
